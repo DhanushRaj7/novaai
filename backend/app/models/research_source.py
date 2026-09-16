@@ -47,3 +47,9 @@ class ResearchSource(Base):
         back_populates="source",
         cascade="all, delete-orphan",
     )
+
+    chunks = relationship(
+    "ResearchChunk",
+    back_populates="source",
+    cascade="all, delete-orphan",
+    )

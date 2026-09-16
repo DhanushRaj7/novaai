@@ -16,6 +16,11 @@ class Evidence(Base):
         nullable=False,
     )
 
+    ai_opportunity_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_opportunities.id"),
+        nullable=False,
+    )
+
     claim: Mapped[str] = mapped_column(
         Text,
         nullable=False,
@@ -45,4 +50,8 @@ class Evidence(Base):
     source = relationship(
         "ResearchSource",
         back_populates="evidence",
+    )
+
+    ai_opportunity = relationship(
+        "AIOpportunity",
     )

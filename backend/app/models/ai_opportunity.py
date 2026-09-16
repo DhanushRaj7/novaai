@@ -77,3 +77,9 @@ class AIOpportunity(Base):
         back_populates="ai_opportunity",
         cascade="all, delete-orphan",
     )
+
+    evidence = relationship(
+    "Evidence",
+    back_populates="ai_opportunity",
+    cascade="all, delete-orphan",
+    )
