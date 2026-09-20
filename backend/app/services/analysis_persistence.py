@@ -6,6 +6,61 @@ from app.models.activity_ai_opportunity import ActivityAIOpportunity
 from app.models.process import Process
 from app.schemas.analysis import ProcessAnalysis
 from app.services.scoring_engine import calculate_priority_score
+from app.services.opportunity_research import retrieve_research_for_opportunity
+from app.services.evidence_analyzer import analyze_research_evidence
+from app.services.evidence_persistence import persist_evidence
+
+
+from app.services.governance_analyzer import analyze_governance
+from app.services.governance_persistence import persist_governance_assessment
+
+
+def clear_existing_analysis(
+    db: Session,
+    process: Process,
+) -> None:
+    """
+    Remove the previously generated analysis for a process.
+
+    We remove:
+        Activities
+        Activity → AI Opportunity links
+        AI Opportunities
+        Evidence attached to those opportunities
+    """
+
+    existing_activities = (
+        db.query(Activity)
+        .filter(Activity.process_id == process.id)
+        .all()
+    )
+
+    for activity in existing_activities:
+
+        links = (
+            db.query(ActivityAIOpportunity)
+            .filter(
+                ActivityAIOpportunity.activity_id == activity.id
+            )
+            .all()
+        )
+
+        for link in links:
+            opportunity = db.get(
+                AIOpportunity,
+                link.ai_opportunity_id,
+            )
+
+            if opportunity is not None:
+                # Evidence is configured with delete-orphan
+                # through the AIOpportunity relationship.
+                db.delete(opportunity)
+
+            db.delete(link)
+
+        db.delete(activity)
+
+    db.flush()
 
 
 def persist_analysis(
@@ -14,7 +69,19 @@ def persist_analysis(
     analysis: ProcessAnalysis,
 ) -> Process:
 
+    # ---------------------------------------------------------
+    # Remove previous generated analysis
+    # ---------------------------------------------------------
+
+    clear_existing_analysis(
+        db=db,
+        process=process,
+    )
+
+    # ---------------------------------------------------------
     # Create activities
+    # ---------------------------------------------------------
+
     activity_models = []
 
     for activity_data in analysis.activities:
@@ -32,10 +99,14 @@ def persist_analysis(
 
     db.flush()
 
+    # ---------------------------------------------------------
     # Create AI opportunities
+    # ---------------------------------------------------------
+
     for index, opportunity_data in enumerate(
         analysis.ai_opportunities
     ):
+
         priority_score = calculate_priority_score(
             automation_potential=opportunity_data.automation_potential,
             human_involvement=opportunity_data.human_involvement,
@@ -62,8 +133,7 @@ def persist_analysis(
         db.add(opportunity)
         db.flush()
 
-        # For this first vertical slice, associate
-        # opportunities with activities sequentially.
+        # Associate opportunity with an activity.
         activity = activity_models[
             min(index, len(activity_models) - 1)
         ]
@@ -76,8 +146,57 @@ def persist_analysis(
 
         db.add(link)
 
-    # Update process priority using the highest opportunity score
+        # -----------------------------------------------------
+        # Research stage
+        # -----------------------------------------------------
+
+        research_results = retrieve_research_for_opportunity(
+            db=db,
+            opportunity_id=opportunity.id,
+            limit=3,
+        )
+
+        for research_result in research_results:
+
+            chunk, distance = research_result
+            source = chunk.source
+
+            evidence_analysis = analyze_research_evidence(
+                opportunity_name=opportunity.name,
+                opportunity_description=opportunity.description,
+                source_title=source.title,
+                source_url=source.url,
+                chunk_content=chunk.content,
+            )
+
+            persist_evidence(
+                db=db,
+                opportunity=opportunity,
+                source=source,
+                analysis=evidence_analysis,
+            )
+
+       
+    # -----------------------------------------------------
+    # Governance stage
+    # -----------------------------------------------------
+
+    governance_analysis = analyze_governance(
+        opportunity=opportunity,
+    )
+
+    persist_governance_assessment(
+        db=db,
+        opportunity=opportunity,
+        analysis=governance_analysis,
+    )    
+
+    # ---------------------------------------------------------
+    # Update process priority
+    # ---------------------------------------------------------
+
     if analysis.ai_opportunities:
+
         scores = [
             calculate_priority_score(
                 automation_potential=o.automation_potential,
@@ -91,6 +210,9 @@ def persist_analysis(
         ]
 
         process.priority_score = max(scores)
+
+    else:
+        process.priority_score = None
 
     db.commit()
     db.refresh(process)

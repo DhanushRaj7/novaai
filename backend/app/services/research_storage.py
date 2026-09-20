@@ -1,31 +1,8 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.research_chunk import ResearchChunk
 from app.services.embedding_service import generate_embedding
-
-from sqlalchemy import select
-
-
-def search_research_chunks(
-    db: Session,
-    *,
-    query: str,
-    limit: int = 5,
-) -> list[ResearchChunk]:
-    """Find research chunks semantically similar to a query."""
-
-    query_embedding = generate_embedding(query)
-
-    distance = ResearchChunk.embedding.cosine_distance(query_embedding)
-
-    statement = (
-        select(ResearchChunk)
-        .where(ResearchChunk.embedding.is_not(None))
-        .order_by(distance)
-        .limit(limit)
-    )
-
-    return list(db.scalars(statement).all())
 
 
 def store_research_chunk(
@@ -49,3 +26,34 @@ def store_research_chunk(
     db.refresh(chunk)
 
     return chunk
+
+
+def search_research_chunks(
+    db: Session,
+    *,
+    query: str,
+    limit: int = 5,
+) -> list[tuple[ResearchChunk, float]]:
+    """Find research chunks semantically similar to a query."""
+
+    query_embedding = generate_embedding(query)
+
+    distance = ResearchChunk.embedding.cosine_distance(query_embedding)
+
+    statement = (
+        select(
+            ResearchChunk,
+            distance.label("distance"),
+        )
+        .options(joinedload(ResearchChunk.source))
+        .where(ResearchChunk.embedding.is_not(None))
+        .order_by(distance)
+        .limit(limit)
+    )
+
+    results = db.execute(statement).all()
+
+    return [
+        (chunk, float(distance))
+        for chunk, distance in results
+    ]

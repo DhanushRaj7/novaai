@@ -1,43 +1,29 @@
 import json
 
-from app.models.process import Process
 from app.schemas.analysis import ProcessAnalysis
 from app.services.llm_service import generate_json
 
 
-def analyze_process(process: Process) -> ProcessAnalysis:
-    prompt = f"""
-You are an enterprise AI transformation analyst.
+prompt = """
+Analyze the process "Credit Assessment".
 
-Analyze the following business process.
+Return ONLY valid JSON.
 
-Process name:
-{process.name}
+Use exactly this structure:
 
-Description:
-{process.description}
-
-Business purpose:
-{process.business_purpose or "Not provided"}
-
-Current challenges:
-{process.current_challenges or "Not provided"}
-
-Return ONLY valid JSON matching this exact structure:
-
-{{
-  "summary": "short process summary",
+{
+  "summary": "short summary",
   "activities": [
-    {{
+    {
       "name": "activity name",
       "description": "activity description",
       "sequence": 1,
       "activity_type": "activity type",
       "decision_required": false
-    }}
+    }
   ],
   "ai_opportunities": [
-    {{
+    {
       "name": "opportunity name",
       "description": "opportunity description",
       "ai_capability": "AI capability",
@@ -48,23 +34,33 @@ Return ONLY valid JSON matching this exact structure:
       "strategic_alignment": 0.0,
       "risk_level": 0.0,
       "reasoning": "reasoning"
-    }}
+    }
   ]
-}}
+}
 
 Rules:
 - Create exactly 3 activities.
 - Create exactly 2 AI opportunities.
 - All numeric scores must be between 0 and 1.
-- Do not invent unrelated activities.
-- Base the analysis on the process information provided.
 - Return JSON only.
 """
 
-    result = generate_json(prompt)
+result = generate_json(prompt)
 
-    data = json.loads(result)
+print("\n--- RAW QWEN JSON ---\n")
+print(result)
 
-    analysis = ProcessAnalysis.model_validate(data)
+data = json.loads(result)
 
-    return analysis
+analysis = ProcessAnalysis.model_validate(data)
+
+print("\n--- PYDANTIC VALIDATION ---\n")
+print("Validation successful!")
+
+print("Summary:", analysis.summary)
+print("Activities:", len(analysis.activities))
+print("AI Opportunities:", len(analysis.ai_opportunities))
+
+print("\nFirst AI opportunity:")
+print(analysis.ai_opportunities[0].name)
+print("Score:", analysis.ai_opportunities[0].expected_benefit)
