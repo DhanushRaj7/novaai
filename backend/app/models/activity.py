@@ -44,3 +44,9 @@ class Activity(Base):
         "Process",
         back_populates="activities",
     )
+
+    ai_opportunity_links = relationship(
+        "ActivityAIOpportunity",
+        back_populates="activity",
+        cascade="all, delete-orphan",
+    )

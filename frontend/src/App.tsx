@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { getProcessIntelligence } from "./services/api";
+import {
+  getProcessIntelligence,
+  getEnterpriseIntelligence,
+} from "./services/api";
 
 type Intelligence = {
   process: {
@@ -95,64 +98,99 @@ type Dependency = {
   depends_on?: Dependency[];
 };
 
+type EnterpriseOpportunity = {
+  id: number;
+  name: string;
+  priority_score: number;
+  expected_benefit: number;
+  feasibility: number;
+  risk_level: number;
+};
+
 function App() {
-  const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
+  const [intelligence, setIntelligence] =
+    useState<Intelligence | null>(null);
+
+  const [enterprise, setEnterprise] =
+    useState<any>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [selectedOpportunity, setSelectedOpportunity] =
     useState<Opportunity | null>(null);
 
   useEffect(() => {
-  async function loadData() {
-    try {
-      const data = await getProcessIntelligence(1);
+    async function loadData() {
+      try {
+        // Load process-level intelligence
+        const processData = await getProcessIntelligence(1);
 
-      const normalizedData: Intelligence = {
-        ...data,
+        const normalizedData: Intelligence = {
+          ...processData,
 
-        roles: (data.roles ?? []).map((role: Role) => ({
-          ...role,
-          skills: role.skills ?? [],
-        })),
+          roles: (processData.roles ?? []).map(
+            (role: Role) => ({
+              ...role,
+              skills: role.skills ?? [],
+            })
+          ),
 
-        activities: (data.activities ?? []).map(
-          (activity: Activity) => ({
-            ...activity,
-            ai_opportunities:
-              activity.ai_opportunities ?? [],
-          })
-        ),
+          activities: (processData.activities ?? []).map(
+            (activity: Activity) => ({
+              ...activity,
+              ai_opportunities:
+                activity.ai_opportunities ?? [],
+            })
+          ),
 
-        ai_opportunities: (
-          data.ai_opportunities ?? []
-        ).map((opportunity: Opportunity) => ({
-          ...opportunity,
-          evidence: opportunity.evidence ?? [],
-          initiatives: opportunity.initiatives ?? [],
-          dependencies: opportunity.dependencies ?? [],
-        })),
+          ai_opportunities: (
+            processData.ai_opportunities ?? []
+          ).map((opportunity: Opportunity) => ({
+            ...opportunity,
+            evidence: opportunity.evidence ?? [],
+            initiatives: opportunity.initiatives ?? [],
+            dependencies: opportunity.dependencies ?? [],
+          })),
 
-        initiatives: data.initiatives ?? [],
-        dependencies: data.dependencies ?? [],
-      };
+          initiatives:
+            processData.initiatives ?? [],
 
-      setIntelligence(normalizedData);
-    } catch (err) {
-      console.error(err);
-      setError("Unable to load process intelligence.");
-    } finally {
-      setLoading(false);
+          dependencies:
+            processData.dependencies ?? [],
+        };
+
+        setIntelligence(normalizedData);
+
+        // Load enterprise-level intelligence
+        const enterpriseData =
+          await getEnterpriseIntelligence();
+
+        setEnterprise(enterpriseData);
+
+        
+
+      } catch (err) {
+        console.error(err);
+        setError(
+          "Unable to load transformation intelligence."
+        );
+      } finally {
+        setLoading(false);
+      }
     }
-  }
 
-  loadData();
-}, []);
+    loadData();
+  }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0b] text-gray-200 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg font-semibold">Loading NovaAI...</div>
+          <div className="text-lg font-semibold">
+            Loading NovaAI...
+          </div>
+
           <div className="text-sm text-gray-500 mt-2">
             Building transformation intelligence
           </div>
@@ -168,6 +206,7 @@ function App() {
           <div className="text-red-400 font-semibold">
             Something went wrong
           </div>
+
           <div className="text-sm text-gray-500 mt-2">
             {error || "No intelligence data available."}
           </div>
@@ -177,28 +216,52 @@ function App() {
   }
 
   const process = intelligence.process;
-  const roles = intelligence.roles ?? [];
-  const activities = intelligence.activities ?? [];
 
-  const ai_opportunities = activities.flatMap(
-    (activity) => activity.ai_opportunities ?? []
-  );
+  const roles = intelligence.roles ?? [];
+
+  const activities =
+    intelligence.activities ?? [];
+
+  const ai_opportunities =
+    activities.flatMap(
+      (activity) =>
+        activity.ai_opportunities ?? []
+    );
 
   const initiatives = Array.from(
     new Map(
       ai_opportunities
-        .flatMap((opportunity) => opportunity.initiatives ?? [])
-        .map((initiative) => [initiative.id, initiative])
+        .flatMap(
+          (opportunity) =>
+            opportunity.initiatives ?? []
+        )
+        .map((initiative) => [
+          initiative.id,
+          initiative,
+        ])
     ).values()
-  );  
+  );
+
+
+  const enterpriseOpportunities: EnterpriseOpportunity[] =
+  enterprise?.ai_opportunities ?? [];
+
+const rankedEnterpriseOpportunities =
+  [...enterpriseOpportunities].sort(
+    (a, b) =>
+      b.priority_score - a.priority_score
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-gray-200">
+
       {/* Header */}
       <header className="border-b border-white/5 bg-[#0c0c0e]">
         <div className="max-w-[1500px] mx-auto px-8 py-5 flex items-center justify-between">
+
           <div>
             <div className="flex items-center gap-3">
+
               <div className="w-9 h-9 rounded-lg bg-white text-black flex items-center justify-center font-bold">
                 N
               </div>
@@ -212,28 +275,240 @@ function App() {
                   Enterprise Transformation Intelligence
                 </p>
               </div>
+
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5">
+
               <div className="w-2 h-2 rounded-full bg-emerald-400" />
+
               <span className="text-xs text-emerald-400">
                 Intelligence Online
               </span>
+
             </div>
 
-            <div className="text-sm text-gray-500">NovaBank</div>
+            <div className="text-sm text-gray-500">
+              NovaBank
+            </div>
+
           </div>
         </div>
       </header>
 
       {/* Main */}
       <main className="max-w-[1500px] mx-auto px-8 py-8">
+
+        {/* Enterprise Intelligence Summary */}
+        {enterprise && (
+          <section className="mb-8">
+
+            <div className="mb-5">
+              <div className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-3">
+                Enterprise Intelligence
+              </div>
+
+              <h2 className="text-2xl font-semibold tracking-tight text-white">
+                NovaBank Transformation Overview
+              </h2>
+
+              <p className="text-sm text-gray-500 mt-2">
+                Enterprise-wide transformation signals across
+                processes, AI opportunities, roles, skills,
+                and initiatives.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-5 gap-4">
+
+              <Metric
+                label="Processes"
+                value={
+                  enterprise.summary?.process_count ?? 0
+                }
+                description="Processes analyzed"
+              />
+
+              <Metric
+                label="AI Opportunities"
+                value={
+                  enterprise.summary
+                    ?.ai_opportunity_count ?? 0
+                }
+                description="Transformation opportunities"
+              />
+
+              <Metric
+                label="Roles"
+                value={
+                  enterprise.summary?.role_count ?? 0
+                }
+                description="Enterprise roles"
+              />
+
+              <Metric
+                label="Skills"
+                value={
+                  enterprise.summary?.skill_count ?? 0
+                }
+                description="Skills tracked"
+              />
+
+              <Metric
+                label="Initiatives"
+                value={
+                  enterprise.summary
+                    ?.initiative_count ?? 0
+                }
+                description="Transformation initiatives"
+              />
+
+            </div>
+
+          </section>
+        )}
+
+        {/* Executive Transformation Priorities */}
+<section className="mb-8">
+  <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+
+    <div className="px-6 py-5 border-b border-white/5">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-[0.2em] text-gray-600 mb-2">
+            Executive Intelligence
+          </div>
+
+          <h3 className="font-semibold text-white">
+            Transformation Priorities
+          </h3>
+
+          <p className="text-xs text-gray-500 mt-1">
+            Enterprise AI opportunities ranked by transformation priority
+          </p>
+        </div>
+
+        <div className="text-xs text-gray-600">
+          {rankedEnterpriseOpportunities.length} opportunities
+        </div>
+      </div>
+    </div>
+
+    <div className="divide-y divide-white/5">
+
+      {rankedEnterpriseOpportunities.map(
+        (opportunity, index) => (
+          <div
+            key={opportunity.id}
+            className="px-6 py-5"
+          >
+
+            <div className="flex items-center gap-5">
+
+              {/* Rank */}
+              <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-xs text-gray-500">
+                {index + 1}
+              </div>
+
+              {/* Opportunity */}
+              <div className="flex-1 min-w-0">
+
+                <div className="font-medium text-gray-200">
+                  {opportunity.name}
+                </div>
+
+                <div className="flex items-center gap-5 mt-3 text-xs">
+
+                  <span className="text-gray-600">
+                    Benefit{" "}
+                    <span className="text-gray-400">
+                      {Math.round(
+                        opportunity.expected_benefit * 100
+                      )}
+                      %
+                    </span>
+                  </span>
+
+                  <span className="text-gray-600">
+                    Feasibility{" "}
+                    <span className="text-gray-400">
+                      {Math.round(
+                        opportunity.feasibility * 100
+                      )}
+                      %
+                    </span>
+                  </span>
+
+                  <span className="text-gray-600">
+                    Risk{" "}
+                    <span className="text-gray-400">
+                      {Math.round(
+                        opportunity.risk_level * 100
+                      )}
+                      %
+                    </span>
+                  </span>
+
+                </div>
+
+              </div>
+
+              {/* Priority */}
+              <div className="w-28 text-right">
+
+                <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                  Priority
+                </div>
+
+                <div className="text-2xl font-semibold text-white mt-1">
+                  {Math.round(
+                    opportunity.priority_score * 100
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Priority bar */}
+            <div className="mt-4 ml-13">
+
+              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+
+                <div
+                  className="h-full bg-white/40 rounded-full"
+                  style={{
+                    width: `${
+                      opportunity.priority_score * 100
+                    }%`,
+                  }}
+                />
+
+              </div>
+
+            </div>
+
+          </div>
+        )
+      )}
+
+    </div>
+
+  </div>
+</section>
+
+
+
         {/* Process Header */}
         <section className="mb-8">
+
           <div className="flex items-start justify-between">
+
             <div>
+
               <div className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-3">
                 Process Intelligence
               </div>
@@ -245,9 +520,11 @@ function App() {
               <p className="max-w-3xl text-gray-500 mt-3 leading-relaxed">
                 {process.description}
               </p>
+
             </div>
 
             <div className="text-right">
+
               <div className="text-xs uppercase tracking-widest text-gray-600 mb-2">
                 Transformation Priority
               </div>
@@ -259,12 +536,16 @@ function App() {
               <div className="text-xs text-gray-500 mt-1">
                 / 100 priority score
               </div>
+
             </div>
+
           </div>
+
         </section>
 
-        {/* Metrics */}
+        {/* Process Metrics */}
         <section className="grid grid-cols-4 gap-4 mb-8">
+
           <Metric
             label="Activities"
             value={activities.length}
@@ -288,67 +569,96 @@ function App() {
             value={initiatives.length}
             description="Transformation initiatives"
           />
+
         </section>
 
         {/* Main Grid */}
         <section className="grid grid-cols-12 gap-6">
+
           {/* Left */}
           <div className="col-span-8 space-y-6">
+
             {/* AI Opportunities */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+
               <div className="px-6 py-5 border-b border-white/5">
+
                 <div className="flex items-center justify-between">
+
                   <div>
+
                     <h3 className="font-semibold text-white">
                       AI Opportunities
                     </h3>
 
                     <p className="text-xs text-gray-500 mt-1">
-                      Ranked opportunities derived from process analysis
+                      Ranked opportunities derived from
+                      process analysis
                     </p>
+
                   </div>
 
                   <div className="text-xs text-gray-600">
                     {ai_opportunities.length} opportunities
                   </div>
+
                 </div>
+
               </div>
 
               <div className="p-4 space-y-3">
-                {ai_opportunities.map((opportunity) => (
-                  <OpportunityCard
-                    key={opportunity.id}
-                    opportunity={opportunity}
-                    onClick={() => setSelectedOpportunity(opportunity)}
-                  />
-                ))}
+
+                {ai_opportunities.map(
+                  (opportunity) => (
+                    <OpportunityCard
+                      key={opportunity.id}
+                      opportunity={opportunity}
+                      onClick={() =>
+                        setSelectedOpportunity(
+                          opportunity
+                        )
+                      }
+                    />
+                  )
+                )}
+
               </div>
+
             </div>
 
             {/* Activities */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+
               <div className="px-6 py-5 border-b border-white/5">
+
                 <h3 className="font-semibold text-white">
                   Process Activities
                 </h3>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  Activities analyzed for AI transformation potential
+                  Activities analyzed for AI
+                  transformation potential
                 </p>
+
               </div>
 
               <div className="divide-y divide-white/5">
+
                 {activities.map((activity) => (
+
                   <div
                     key={activity.id}
                     className="px-6 py-5 flex items-center justify-between"
                   >
+
                     <div className="flex items-start gap-4">
+
                       <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-xs text-gray-500">
                         {activity.sequence}
                       </div>
 
                       <div>
+
                         <div className="font-medium text-gray-200">
                           {activity.name}
                         </div>
@@ -360,10 +670,13 @@ function App() {
                         <div className="text-sm text-gray-500 mt-2 max-w-2xl">
                           {activity.description}
                         </div>
+
                       </div>
+
                     </div>
 
                     <div className="flex items-center gap-4">
+
                       {activity.decision_required && (
                         <span className="px-2 py-1 rounded-md bg-amber-500/5 border border-amber-500/10 text-xs text-amber-400">
                           Decision
@@ -371,21 +684,33 @@ function App() {
                       )}
 
                       <div className="text-xs text-gray-600">
-                        {activity.ai_opportunities?.length ?? 0} AI opportunit
-                        {(activity.ai_opportunities?.length ?? 0) !== 1 ? "ies" : "y"}
+                        {activity.ai_opportunities?.length ?? 0}{" "}
+                        AI opportunit
+                        {(activity.ai_opportunities?.length ?? 0) !== 1
+                          ? "ies"
+                          : "y"}
                       </div>
+
                     </div>
+
                   </div>
+
                 ))}
+
               </div>
+
             </div>
+
           </div>
 
           {/* Right */}
           <div className="col-span-4 space-y-6">
+
             {/* Roles */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+
               <div className="px-6 py-5 border-b border-white/5">
+
                 <h3 className="font-semibold text-white">
                   Affected Roles
                 </h3>
@@ -393,53 +718,74 @@ function App() {
                 <p className="text-xs text-gray-500 mt-1">
                   Roles connected to this process
                 </p>
+
               </div>
 
               <div className="p-4 space-y-3">
+
                 {roles.map((role) => (
+
                   <div
                     key={role.id}
                     className="rounded-xl border border-white/5 bg-white/[0.015] p-4"
                   >
+
                     <div className="font-medium text-gray-200">
                       {role.name}
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+
                       {role.skills.map((skill) => (
+
                         <span
                           key={skill.id}
                           className="px-2 py-1 rounded-md bg-white/5 text-[11px] text-gray-500"
                         >
                           {skill.name}
                         </span>
+
                       ))}
+
                     </div>
+
                   </div>
+
                 ))}
+
               </div>
+
             </div>
 
             {/* Initiatives */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+
               <div className="px-6 py-5 border-b border-white/5">
+
                 <h3 className="font-semibold text-white">
                   Transformation Initiatives
                 </h3>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  Strategic actions connected to this process
+                  Strategic actions connected to this
+                  process
                 </p>
+
               </div>
 
               <div className="p-4 space-y-3">
+
                 {initiatives.map((initiative) => (
+
                   <div
                     key={initiative.id}
                     className="rounded-xl border border-white/5 p-4"
                   >
+
                     <div className="flex items-start justify-between gap-4">
+
                       <div>
+
                         <div className="font-medium text-gray-200">
                           {initiative.name}
                         </div>
@@ -449,15 +795,19 @@ function App() {
                             {initiative.description}
                           </div>
                         )}
+
                       </div>
 
                       <span className="px-2 py-1 rounded-md bg-blue-500/5 border border-blue-500/10 text-xs text-blue-400">
                         {initiative.status}
                       </span>
+
                     </div>
 
                     <div className="mt-4">
+
                       <div className="flex items-center justify-between text-xs mb-1">
+
                         <span className="text-gray-600">
                           Priority
                         </span>
@@ -465,32 +815,48 @@ function App() {
                         <span className="text-gray-400">
                           {(initiative.priority * 100).toFixed(0)}
                         </span>
+
                       </div>
 
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+
                         <div
                           className="h-full bg-white/40 rounded-full"
                           style={{
-                            width: `${initiative.priority * 100}%`,
+                            width: `${
+                              initiative.priority * 100
+                            }%`,
                           }}
                         />
+
                       </div>
+
                     </div>
+
                   </div>
+
                 ))}
+
               </div>
+
             </div>
+
           </div>
+
         </section>
+
       </main>
 
       {/* Opportunity Drawer */}
       {selectedOpportunity && (
         <OpportunityDrawer
           opportunity={selectedOpportunity}
-          onClose={() => setSelectedOpportunity(null)}
+          onClose={() =>
+            setSelectedOpportunity(null)
+          }
         />
       )}
+
     </div>
   );
 }

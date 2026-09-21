@@ -13,3 +13,17 @@ export async function getProcessIntelligence(processId: number) {
 
   return response.json();
 }
+
+export async function getEnterpriseIntelligence() {
+  const response = await fetch(
+    `${API_BASE_URL}/intelligence/enterprise`
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch enterprise intelligence: ${response.status}`
+    );
+  }
+
+  return response.json();
+}

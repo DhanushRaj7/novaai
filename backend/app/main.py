@@ -8,6 +8,7 @@ from app.api.initiatives import router as initiative_router
 from app.api.initiative_links import router as initiative_link_router
 from app.api.initiative_dependencies import router as initiative_dependency_router
 from app.db.database import get_db
+from app.api.enterprise_intelligence import router as enterprise_intelligence_router
 
 
 app = FastAPI(title="NovaAI")
@@ -37,6 +38,7 @@ app.include_router(process_router)
 app.include_router(initiative_router)
 app.include_router(initiative_link_router)
 app.include_router(initiative_dependency_router)
+app.include_router(enterprise_intelligence_router)
 
 
 # ============================================================
