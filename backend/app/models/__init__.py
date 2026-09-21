@@ -15,6 +15,7 @@ from app.models.governance import GovernanceAssessment
 from app.models.initiative import TransformationInitiative
 from app.models.initiative_dependency import InitiativeDependency
 from app.models.research_chunk import ResearchChunk
+from app.models.ai_opportunity_initiative import AIOpportunityInitiative
 
 
 __all__ = [

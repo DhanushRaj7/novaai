@@ -83,3 +83,10 @@ class AIOpportunity(Base):
     back_populates="ai_opportunity",
     cascade="all, delete-orphan",
     )
+
+
+    initiative_links = relationship(
+    "AIOpportunityInitiative",
+    back_populates="ai_opportunity",
+    cascade="all, delete-orphan",
+    )

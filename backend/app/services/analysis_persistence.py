@@ -3,14 +3,15 @@ from sqlalchemy.orm import Session
 from app.models.activity import Activity
 from app.models.ai_opportunity import AIOpportunity
 from app.models.activity_ai_opportunity import ActivityAIOpportunity
+from app.models.governance import GovernanceAssessment
 from app.models.process import Process
+
 from app.schemas.analysis import ProcessAnalysis
+
 from app.services.scoring_engine import calculate_priority_score
 from app.services.opportunity_research import retrieve_research_for_opportunity
 from app.services.evidence_analyzer import analyze_research_evidence
 from app.services.evidence_persistence import persist_evidence
-
-
 from app.services.governance_analyzer import analyze_governance
 from app.services.governance_persistence import persist_governance_assessment
 
@@ -22,11 +23,12 @@ def clear_existing_analysis(
     """
     Remove the previously generated analysis for a process.
 
-    We remove:
+    Removes:
         Activities
         Activity → AI Opportunity links
         AI Opportunities
         Evidence attached to those opportunities
+        Governance assessments attached to those opportunities
     """
 
     existing_activities = (
@@ -46,12 +48,28 @@ def clear_existing_analysis(
         )
 
         for link in links:
+
             opportunity = db.get(
                 AIOpportunity,
                 link.ai_opportunity_id,
             )
 
             if opportunity is not None:
+
+                # Governance must be deleted before the
+                # AI opportunity because of the foreign key.
+                governance = (
+                    db.query(GovernanceAssessment)
+                    .filter(
+                        GovernanceAssessment.ai_opportunity_id
+                        == opportunity.id
+                    )
+                    .first()
+                )
+
+                if governance is not None:
+                    db.delete(governance)
+
                 # Evidence is configured with delete-orphan
                 # through the AIOpportunity relationship.
                 db.delete(opportunity)
@@ -85,6 +103,7 @@ def persist_analysis(
     activity_models = []
 
     for activity_data in analysis.activities:
+
         activity = Activity(
             process_id=process.id,
             name=activity_data.name,
@@ -107,6 +126,10 @@ def persist_analysis(
         analysis.ai_opportunities
     ):
 
+        # -----------------------------------------------------
+        # Calculate deterministic priority score
+        # -----------------------------------------------------
+
         priority_score = calculate_priority_score(
             automation_potential=opportunity_data.automation_potential,
             human_involvement=opportunity_data.human_involvement,
@@ -115,6 +138,10 @@ def persist_analysis(
             strategic_alignment=opportunity_data.strategic_alignment,
             risk_level=opportunity_data.risk_level,
         )
+
+        # -----------------------------------------------------
+        # Create AI opportunity
+        # -----------------------------------------------------
 
         opportunity = AIOpportunity(
             name=opportunity_data.name,
@@ -133,7 +160,10 @@ def persist_analysis(
         db.add(opportunity)
         db.flush()
 
-        # Associate opportunity with an activity.
+        # -----------------------------------------------------
+        # Associate opportunity with an activity
+        # -----------------------------------------------------
+
         activity = activity_models[
             min(index, len(activity_models) - 1)
         ]
@@ -176,20 +206,19 @@ def persist_analysis(
                 analysis=evidence_analysis,
             )
 
-       
-    # -----------------------------------------------------
-    # Governance stage
-    # -----------------------------------------------------
+        # -----------------------------------------------------
+        # Governance stage
+        # -----------------------------------------------------
 
-    governance_analysis = analyze_governance(
-        opportunity=opportunity,
-    )
+        governance_analysis = analyze_governance(
+            opportunity=opportunity,
+        )
 
-    persist_governance_assessment(
-        db=db,
-        opportunity=opportunity,
-        analysis=governance_analysis,
-    )    
+        persist_governance_assessment(
+            db=db,
+            opportunity=opportunity,
+            analysis=governance_analysis,
+        )
 
     # ---------------------------------------------------------
     # Update process priority
@@ -213,6 +242,10 @@ def persist_analysis(
 
     else:
         process.priority_score = None
+
+    # ---------------------------------------------------------
+    # Commit everything
+    # ---------------------------------------------------------
 
     db.commit()
     db.refresh(process)

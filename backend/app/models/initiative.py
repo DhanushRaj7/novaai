@@ -41,3 +41,9 @@ class TransformationInitiative(Base):
     )
 
     organisation = relationship("Organisation")
+
+    opportunity_links = relationship(
+    "AIOpportunityInitiative",
+    back_populates="initiative",
+    cascade="all, delete-orphan",
+    )
