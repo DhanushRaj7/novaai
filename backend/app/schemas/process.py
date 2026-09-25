@@ -1,4 +1,12 @@
 from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field
+
+
+class NewProcessAnalysisRequest(BaseModel):
+    name: str = Field(min_length=3, max_length=200)
+    description: str = Field(min_length=10, max_length=2000)
+    value_chain_stage_id: int
+
 
 
 class ProcessCreate(BaseModel):

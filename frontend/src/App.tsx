@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   getProcessIntelligence,
   getEnterpriseIntelligence,
+  analyzeNewProcess,
 } from "./services/api";
 
 type Intelligence = {
@@ -87,15 +88,18 @@ type Initiative = {
   priority: number;
   status: string;
   relationship?: string;
+  relationship_type?: string;
+  dependencies?: Dependency[];
 };
 
 type Dependency = {
   initiative_id: number;
-  initiative_name: string;
+  name: string;
   dependency_type: string;
+  description?: string;
   priority: number;
   status: string;
-  depends_on?: Dependency[];
+  dependencies?: Dependency[];
 };
 
 type EnterpriseOpportunity = {
@@ -119,6 +123,45 @@ function App() {
 
   const [selectedOpportunity, setSelectedOpportunity] =
     useState<Opportunity | null>(null);
+
+  const [newProcessName, setNewProcessName] = useState("");
+  const [newProcessDescription, setNewProcessDescription] = useState("");
+  const [newProcessStage, setNewProcessStage] = useState(5);
+  const [analyzingNewProcess, setAnalyzingNewProcess] = useState(false);
+  const [newProcessResult, setNewProcessResult] = useState<any>(null);
+  const [newProcessError, setNewProcessError] = useState("");
+
+  const handleAnalyzeNewProcess = async () => {
+    if (!newProcessName.trim() || !newProcessDescription.trim()) {
+      setNewProcessError("Process name and description are required.");
+      return;
+    }
+
+    try {
+      setAnalyzingNewProcess(true);
+      setNewProcessError("");
+      setNewProcessResult(null);
+
+      const result = await analyzeNewProcess(
+        newProcessName.trim(),
+        newProcessDescription.trim(),
+        newProcessStage
+      );
+
+      setNewProcessResult(result);
+      setNewProcessName("");
+      setNewProcessDescription("");
+    } catch (err) {
+      console.error(err);
+      setNewProcessError(
+        err instanceof Error
+          ? err.message
+          : "Failed to analyze process."
+      );
+    } finally {
+      setAnalyzingNewProcess(false);
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -370,6 +413,116 @@ const rankedEnterpriseOpportunities =
 
           </section>
         )}
+
+        {/* Surprise Record / New Process Analysis */}
+        <section className="mb-8">
+          <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-white/5">
+              <div className="text-xs uppercase tracking-[0.2em] text-gray-600 mb-2">
+                Surprise Record Test
+              </div>
+              <h3 className="font-semibold text-white">
+                Analyze a New Process
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Submit a completely new enterprise process and run the same analysis pipeline dynamically.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-12 gap-4">
+                <div className="col-span-4">
+                  <label className="text-xs text-gray-500">Process name</label>
+                  <input
+                    value={newProcessName}
+                    onChange={(e) => setNewProcessName(e.target.value)}
+                    placeholder="e.g. Fraud Investigation"
+                    className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-gray-200 outline-none focus:border-white/20"
+                  />
+                </div>
+
+                <div className="col-span-5">
+                  <label className="text-xs text-gray-500">Description</label>
+                  <textarea
+                    value={newProcessDescription}
+                    onChange={(e) => setNewProcessDescription(e.target.value)}
+                    placeholder="Describe what the process does..."
+                    rows={3}
+                    className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-gray-200 outline-none focus:border-white/20"
+                  />
+                </div>
+
+                <div className="col-span-3">
+                  <label className="text-xs text-gray-500">Value chain stage</label>
+                  <select
+                    value={newProcessStage}
+                    onChange={(e) => setNewProcessStage(Number(e.target.value))}
+                    className="mt-2 w-full rounded-lg border border-white/10 bg-[#111114] px-3 py-2.5 text-sm text-gray-200 outline-none focus:border-white/20"
+                  >
+                    <option value={1}>Customer Acquisition</option>
+                    <option value={2}>Customer Service</option>
+                    <option value={3}>Lending</option>
+                    <option value={4}>Payments</option>
+                    <option value={5}>Risk & Compliance</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-xs text-red-400">{newProcessError}</div>
+                <button
+                  onClick={handleAnalyzeNewProcess}
+                  disabled={analyzingNewProcess}
+                  className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {analyzingNewProcess ? "Analyzing..." : "Analyze Process"}
+                </button>
+              </div>
+
+              {newProcessResult && (
+                <div className="mt-5 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-5">
+                  <div className="flex items-start justify-between gap-6">
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-emerald-400/70">
+                        Analysis completed
+                      </div>
+                      <div className="text-base font-medium text-gray-200 mt-2">
+                        {newProcessResult.process_name}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        {newProcessResult.summary || "Process analysis completed successfully."}
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                        Priority
+                      </div>
+                      <div className="text-3xl font-semibold text-white mt-1">
+                        {Math.round((newProcessResult.priority_score ?? 0) * 100)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <DetailMetric
+                      label="Activities created"
+                      value={newProcessResult.activities_created ?? 0}
+                    />
+                    <DetailMetric
+                      label="AI opportunities created"
+                      value={newProcessResult.ai_opportunities_created ?? 0}
+                    />
+                  </div>
+
+                  <div className="mt-4 text-xs text-gray-600">
+                    Stored as process #{newProcessResult.process_id}. Refresh the dashboard to load the updated enterprise dataset.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
 
         {/* Executive Transformation Priorities */}
 <section className="mb-8">
@@ -793,6 +946,15 @@ const rankedEnterpriseOpportunities =
                         {initiative.description && (
                           <div className="text-xs text-gray-500 mt-2">
                             {initiative.description}
+                          </div>
+                        )}
+
+                        {initiative.dependencies && initiative.dependencies.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-white/5">
+                            <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">
+                              Dependencies
+                            </div>
+                            <DependencyList dependencies={initiative.dependencies} />
                           </div>
                         )}
 
@@ -1290,7 +1452,7 @@ function OpportunityDrawer({
                       <DetailMetric
                         label="Relationship"
                         value={
-                          initiative.relationship || "Supports"
+                          initiative.relationship || initiative.relationship_type || "Supports"
                         }
                         text
                       />
@@ -1437,7 +1599,7 @@ function DependencyList({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-sm text-gray-300">
-                  {dependency.initiative_name}
+                  {dependency.name}
                 </div>
 
                 <div className="text-xs text-gray-600 mt-1">
@@ -1460,11 +1622,17 @@ function DependencyList({
             </div>
           </div>
 
-          {dependency.depends_on &&
-            dependency.depends_on.length > 0 && (
+          {dependency.description && (
+            <div className="text-xs text-gray-600 mt-2">
+              {dependency.description}
+            </div>
+          )}
+
+          {dependency.dependencies &&
+            dependency.dependencies.length > 0 && (
               <div className="mt-3 pl-4 border-l border-white/5">
                 <DependencyList
-                  dependencies={dependency.depends_on}
+                  dependencies={dependency.dependencies}
                   depth={depth + 1}
                 />
               </div>

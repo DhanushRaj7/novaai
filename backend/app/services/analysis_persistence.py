@@ -2,9 +2,11 @@ from sqlalchemy.orm import Session
 
 from app.models.activity import Activity
 from app.models.ai_opportunity import AIOpportunity
+from app.models.ai_opportunity_initiative import AIOpportunityInitiative
 from app.models.activity_ai_opportunity import ActivityAIOpportunity
 from app.models.governance import GovernanceAssessment
 from app.models.process import Process
+from app.models.process_role import ProcessRole
 
 from app.schemas.analysis import ProcessAnalysis
 
@@ -14,6 +16,7 @@ from app.services.evidence_analyzer import analyze_research_evidence
 from app.services.evidence_persistence import persist_evidence
 from app.services.governance_analyzer import analyze_governance
 from app.services.governance_persistence import persist_governance_assessment
+from app.services.transformation_linker import link_transformation_intelligence
 
 
 def clear_existing_analysis(
@@ -21,14 +24,12 @@ def clear_existing_analysis(
     process: Process,
 ) -> None:
     """
-    Remove the previously generated analysis for a process.
+    Remove previously generated analysis for a process.
 
-    Removes:
-        Activities
-        Activity → AI Opportunity links
-        AI Opportunities
-        Evidence attached to those opportunities
-        Governance assessments attached to those opportunities
+    This also removes opportunity → initiative links before deleting
+    opportunities, preventing stale foreign-key rows during re-analysis.
+    Existing process → role links are intentionally preserved so that
+    manually curated role assignments are not destroyed by re-analysis.
     """
 
     existing_activities = (
@@ -38,7 +39,6 @@ def clear_existing_analysis(
     )
 
     for activity in existing_activities:
-
         links = (
             db.query(ActivityAIOpportunity)
             .filter(
@@ -48,16 +48,24 @@ def clear_existing_analysis(
         )
 
         for link in links:
-
             opportunity = db.get(
                 AIOpportunity,
                 link.ai_opportunity_id,
             )
 
             if opportunity is not None:
+                initiative_links = (
+                    db.query(AIOpportunityInitiative)
+                    .filter(
+                        AIOpportunityInitiative.ai_opportunity_id
+                        == opportunity.id
+                    )
+                    .all()
+                )
 
-                # Governance must be deleted before the
-                # AI opportunity because of the foreign key.
+                for initiative_link in initiative_links:
+                    db.delete(initiative_link)
+
                 governance = (
                     db.query(GovernanceAssessment)
                     .filter(
@@ -70,8 +78,6 @@ def clear_existing_analysis(
                 if governance is not None:
                     db.delete(governance)
 
-                # Evidence is configured with delete-orphan
-                # through the AIOpportunity relationship.
                 db.delete(opportunity)
 
             db.delete(link)
@@ -86,7 +92,6 @@ def persist_analysis(
     process: Process,
     analysis: ProcessAnalysis,
 ) -> Process:
-
     # ---------------------------------------------------------
     # Remove previous generated analysis
     # ---------------------------------------------------------
@@ -103,7 +108,6 @@ def persist_analysis(
     activity_models = []
 
     for activity_data in analysis.activities:
-
         activity = Activity(
             process_id=process.id,
             name=activity_data.name,
@@ -122,14 +126,11 @@ def persist_analysis(
     # Create AI opportunities
     # ---------------------------------------------------------
 
+    opportunity_models: list[AIOpportunity] = []
+
     for index, opportunity_data in enumerate(
         analysis.ai_opportunities
     ):
-
-        # -----------------------------------------------------
-        # Calculate deterministic priority score
-        # -----------------------------------------------------
-
         priority_score = calculate_priority_score(
             automation_potential=opportunity_data.automation_potential,
             human_involvement=opportunity_data.human_involvement,
@@ -138,10 +139,6 @@ def persist_analysis(
             strategic_alignment=opportunity_data.strategic_alignment,
             risk_level=opportunity_data.risk_level,
         )
-
-        # -----------------------------------------------------
-        # Create AI opportunity
-        # -----------------------------------------------------
 
         opportunity = AIOpportunity(
             name=opportunity_data.name,
@@ -159,22 +156,24 @@ def persist_analysis(
 
         db.add(opportunity)
         db.flush()
+        opportunity_models.append(opportunity)
 
         # -----------------------------------------------------
         # Associate opportunity with an activity
         # -----------------------------------------------------
 
-        activity = activity_models[
-            min(index, len(activity_models) - 1)
-        ]
+        if activity_models:
+            activity = activity_models[
+                min(index, len(activity_models) - 1)
+            ]
 
-        link = ActivityAIOpportunity(
-            activity_id=activity.id,
-            ai_opportunity_id=opportunity.id,
-            impact_type="ai_assistance",
-        )
+            link = ActivityAIOpportunity(
+                activity_id=activity.id,
+                ai_opportunity_id=opportunity.id,
+                impact_type="ai_assistance",
+            )
 
-        db.add(link)
+            db.add(link)
 
         # -----------------------------------------------------
         # Research stage
@@ -187,7 +186,6 @@ def persist_analysis(
         )
 
         for research_result in research_results:
-
             chunk, distance = research_result
             source = chunk.source
 
@@ -225,7 +223,6 @@ def persist_analysis(
     # ---------------------------------------------------------
 
     if analysis.ai_opportunities:
-
         scores = [
             calculate_priority_score(
                 automation_potential=o.automation_potential,
@@ -239,9 +236,22 @@ def persist_analysis(
         ]
 
         process.priority_score = max(scores)
-
     else:
         process.priority_score = None
+
+    db.flush()
+
+    # ---------------------------------------------------------
+    # Cross-enterprise transformation intelligence
+    # ---------------------------------------------------------
+    # Connect the newly analyzed process to existing enterprise
+    # roles and transformation initiatives.
+
+    link_transformation_intelligence(
+        db=db,
+        process=process,
+        opportunities=opportunity_models,
+    )
 
     # ---------------------------------------------------------
     # Commit everything

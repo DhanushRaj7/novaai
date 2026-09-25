@@ -4,6 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 
+from app.schemas.process import (
+    NewProcessAnalysisRequest,
+    ProcessCreate,
+    ProcessResponse,
+)
+
 from app.models.process import Process
 from app.models.role import Role
 from app.models.process_role import ProcessRole
@@ -15,8 +21,6 @@ from app.models.governance import GovernanceAssessment
 from app.models.ai_opportunity_initiative import AIOpportunityInitiative
 from app.models.initiative import TransformationInitiative
 from app.models.initiative_dependency import InitiativeDependency
-
-from app.schemas.process import ProcessCreate, ProcessResponse
 
 from app.services.process_analyzer import analyze_process
 from app.services.analysis_persistence import persist_analysis
@@ -31,6 +35,7 @@ router = APIRouter(
 # ============================================================
 # PROCESS CRUD
 # ============================================================
+
 
 @router.post("", response_model=ProcessResponse)
 def create_process(
@@ -83,6 +88,7 @@ def get_process(
 # PROCESS ANALYSIS
 # ============================================================
 
+
 @router.post("/{process_id}/analyze")
 def analyze_process_endpoint(
     process_id: int,
@@ -117,8 +123,73 @@ def analyze_process_endpoint(
 
 
 # ============================================================
+# SURPRISE RECORD / DYNAMIC PROCESS ANALYSIS
+# ============================================================
+
+
+@router.post("/analyze-new")
+def analyze_new_process(
+    payload: NewProcessAnalysisRequest,
+    db: Session = Depends(get_db),
+):
+    # --------------------------------------------------------
+    # Create the new process
+    # --------------------------------------------------------
+
+    process = Process(
+        name=payload.name,
+        description=payload.description,
+        value_chain_stage_id=payload.value_chain_stage_id,
+    )
+
+    db.add(process)
+    db.commit()
+    db.refresh(process)
+
+    # --------------------------------------------------------
+    # Analyze the process using the LLM
+    # --------------------------------------------------------
+
+    analysis = analyze_process(process)
+
+    # --------------------------------------------------------
+    # Persist the complete analysis
+    #
+    # This creates:
+    #   Activities
+    #   AI Opportunities
+    #   Activity → AI Opportunity links
+    #   Research Evidence
+    #   Governance Assessments
+    #   Priority Scores
+    # --------------------------------------------------------
+
+    process = persist_analysis(
+        db=db,
+        process=process,
+        analysis=analysis,
+    )
+
+    # --------------------------------------------------------
+    # Return the generated intelligence
+    # --------------------------------------------------------
+
+    return {
+        "process_id": process.id,
+        "process_name": process.name,
+        "priority_score": process.priority_score,
+        "summary": analysis.summary,
+        "activities_created": len(analysis.activities),
+        "ai_opportunities_created": len(
+            analysis.ai_opportunities
+        ),
+    }
+
+
+# ============================================================
 # RECURSIVE INITIATIVE DEPENDENCY TRAVERSAL
 # ============================================================
+
 
 def get_dependency_chain(
     db: Session,
@@ -195,6 +266,7 @@ def get_dependency_chain(
 # ============================================================
 # PROCESS INTELLIGENCE
 # ============================================================
+
 
 @router.get("/{process_id}/intelligence")
 def get_process_intelligence(
