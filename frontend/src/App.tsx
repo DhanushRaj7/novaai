@@ -76,8 +76,10 @@ type Evidence = {
   id: number;
   claim: string;
   excerpt: string;
-  relevance: number;
-  confidence: number;
+  relevance?: number;
+  confidence?: number;
+  relevance_score?: number;
+  confidence_score?: number;
   source_id: number;
 };
 
@@ -189,12 +191,47 @@ function App() {
 
           ai_opportunities: (
             processData.ai_opportunities ?? []
-          ).map((opportunity: Opportunity) => ({
-            ...opportunity,
-            evidence: opportunity.evidence ?? [],
-            initiatives: opportunity.initiatives ?? [],
-            dependencies: opportunity.dependencies ?? [],
-          })),
+          ).map((opportunity: any) => {
+            const evidence = (opportunity.evidence ?? []).map(
+              (item: any) => ({
+                ...item,
+                relevance:
+                  item.relevance ??
+                  item.relevance_score ??
+                  0,
+                confidence:
+                  item.confidence ??
+                  item.confidence_score ??
+                  0,
+              })
+            );
+
+            const initiatives = (
+              opportunity.initiatives ?? []
+            ).map((initiative: any) => ({
+              ...initiative,
+              relationship:
+                initiative.relationship ??
+                initiative.relationship_type ??
+                "Supports",
+              dependencies:
+                initiative.dependencies ?? [],
+            }));
+
+            const dependencies =
+              opportunity.dependencies ??
+              initiatives.flatMap(
+                (initiative: Initiative) =>
+                  initiative.dependencies ?? []
+              );
+
+            return {
+              ...opportunity,
+              evidence,
+              initiatives,
+              dependencies,
+            };
+          }),
 
           initiatives:
             processData.initiatives ?? [],
@@ -365,7 +402,7 @@ const rankedEnterpriseOpportunities =
               </p>
             </div>
 
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
 
               <Metric
                 label="Processes"
@@ -697,7 +734,7 @@ const rankedEnterpriseOpportunities =
         </section>
 
         {/* Process Metrics */}
-        <section className="grid grid-cols-4 gap-4 mb-8">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
           <Metric
             label="Activities"
@@ -726,10 +763,10 @@ const rankedEnterpriseOpportunities =
         </section>
 
         {/* Main Grid */}
-        <section className="grid grid-cols-12 gap-6">
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* Left */}
-          <div className="col-span-8 space-y-6">
+          <div className="lg:col-span-8 space-y-6">
 
             {/* AI Opportunities */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
@@ -857,7 +894,7 @@ const rankedEnterpriseOpportunities =
           </div>
 
           {/* Right */}
-          <div className="col-span-4 space-y-6">
+          <div className="lg:col-span-4 space-y-6">
 
             {/* Roles */}
             <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
@@ -935,36 +972,39 @@ const rankedEnterpriseOpportunities =
                     className="rounded-xl border border-white/5 p-4"
                   >
 
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
 
-                      <div>
+                      <div className="min-w-0 flex-1">
 
-                        <div className="font-medium text-gray-200">
+                        <div className="font-medium text-gray-200 break-words">
                           {initiative.name}
                         </div>
 
                         {initiative.description && (
-                          <div className="text-xs text-gray-500 mt-2">
+                          <div className="text-xs text-gray-500 mt-2 leading-relaxed break-words">
                             {initiative.description}
-                          </div>
-                        )}
-
-                        {initiative.dependencies && initiative.dependencies.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-white/5">
-                            <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">
-                              Dependencies
-                            </div>
-                            <DependencyList dependencies={initiative.dependencies} />
                           </div>
                         )}
 
                       </div>
 
-                      <span className="px-2 py-1 rounded-md bg-blue-500/5 border border-blue-500/10 text-xs text-blue-400">
+                      <span className="shrink-0 self-start px-2 py-1 rounded-md bg-blue-500/5 border border-blue-500/10 text-xs text-blue-400">
                         {initiative.status}
                       </span>
 
                     </div>
+
+                    {initiative.dependencies && initiative.dependencies.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-white/5">
+                        <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">
+                          Dependencies
+                        </div>
+
+                        <div className="min-w-0 overflow-hidden">
+                          <DependencyList dependencies={initiative.dependencies} />
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mt-4">
 
@@ -1138,6 +1178,16 @@ function OpportunityCard({
   );
 }
 
+function formatPercentage(value: unknown): string {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return "N/A";
+  }
+
+  return `${Math.round(numeric * 100)}%`;
+}
+
 /* =========================================================
    SCORE
 ========================================================= */
@@ -1188,6 +1238,15 @@ function OpportunityDrawer({
   onClose: () => void;
 }) {
   const governance = opportunity.governance;
+
+  const dependencies = (
+    opportunity.dependencies &&
+    opportunity.dependencies.length > 0
+      ? opportunity.dependencies
+      : (opportunity.initiatives ?? []).flatMap(
+          (initiative) => initiative.dependencies ?? []
+        )
+  );
 
   return (
     <div className="fixed inset-0 z-50">
@@ -1386,14 +1445,20 @@ function OpportunityDrawer({
                       <span className="text-gray-600">
                         Relevance:{" "}
                         <span className="text-gray-400">
-                          {Math.round(evidence.relevance * 100)}%
+                          {formatPercentage(
+                            evidence.relevance ??
+                              (evidence as any).relevance_score
+                          )}
                         </span>
                       </span>
 
                       <span className="text-gray-600">
                         Confidence:{" "}
                         <span className="text-gray-400">
-                          {Math.round(evidence.confidence * 100)}%
+                          {formatPercentage(
+                            evidence.confidence ??
+                              (evidence as any).confidence_score
+                          )}
                         </span>
                       </span>
 
@@ -1471,11 +1536,10 @@ function OpportunityDrawer({
           <section>
             <SectionTitle title="Transformation dependencies" />
 
-            {opportunity.dependencies &&
-            opportunity.dependencies.length > 0 ? (
+            {dependencies.length > 0 ? (
               <div className="rounded-xl border border-white/5 bg-white/[0.015] p-5">
                 <DependencyList
-                  dependencies={opportunity.dependencies}
+                  dependencies={dependencies}
                   depth={0}
                 />
               </div>
@@ -1595,22 +1659,28 @@ function DependencyList({
             marginLeft: `${depth * 20}px`,
           }}
         >
-          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm text-gray-300">
+          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4 min-w-0 overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-gray-300 break-words">
                   {dependency.name}
                 </div>
 
-                <div className="text-xs text-gray-600 mt-1">
+                <div className="text-xs text-gray-600 mt-1 break-words">
                   {dependency.dependency_type}
                 </div>
               </div>
 
-              <span className="text-[10px] uppercase tracking-wider text-gray-600">
+              <span className="shrink-0 self-start text-[10px] uppercase tracking-wider text-gray-600">
                 {dependency.status}
               </span>
             </div>
+
+            {dependency.description && (
+              <div className="text-xs text-gray-600 mt-3 leading-relaxed break-words">
+                {dependency.description}
+              </div>
+            )}
 
             <div className="flex items-center gap-4 mt-3 text-[11px] text-gray-600">
               <span>
@@ -1621,12 +1691,6 @@ function DependencyList({
               </span>
             </div>
           </div>
-
-          {dependency.description && (
-            <div className="text-xs text-gray-600 mt-2">
-              {dependency.description}
-            </div>
-          )}
 
           {dependency.dependencies &&
             dependency.dependencies.length > 0 && (
