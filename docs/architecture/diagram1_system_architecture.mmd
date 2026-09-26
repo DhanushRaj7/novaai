@@ -1,0 +1,67 @@
+%%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#334155", "lineColor": "#64748b", "secondaryColor": "#0f172a", "tertiaryColor": "#0a0a0f", "background": "#0f172a", "mainBkg": "#111827", "nodeBorder": "#334155", "clusterBkg": "#0a0a0f", "titleColor": "#f1f5f9", "edgeLabelBackground": "#0f172a", "fontFamily": "Segoe UI, system-ui, sans-serif", "fontSize": "14px", "clusterBorder": "#1e293b"}}}%%
+flowchart TD
+    USER["👤  Executive / Analyst"]
+
+    subgraph FRONTEND["  FRONTEND  —  React 19 · TypeScript · Vite · Tailwind CSS v4  "]
+        direction LR
+        FE_ENT["Enterprise Intelligence\nDashboard"]
+        FE_PRI["Transformation\nPriorities"]
+        FE_PROC["Process\nIntelligence View"]
+        FE_OPP["AI Opportunity\nAnalysis"]
+        FE_ROLE["Role & Skill\nImpact"]
+        FE_GOV["Governance\nAssessment"]
+        FE_DEP["Transformation\nDependencies"]
+        FE_SR["Surprise Record\nNew Process Form"]
+    end
+
+    subgraph BACKEND["  BACKEND  —  FastAPI  "]
+        direction TB
+        subgraph APIS["  API Layer  "]
+            direction LR
+            API_PROC["Process API\n/processes"]
+            API_ENT["Enterprise Intelligence API\n/intelligence/enterprise"]
+            API_INIT["Transformation Initiative APIs\n/initiatives · /initiative-links\n/initiative-dependencies"]
+        end
+        subgraph SERVICES["  Service Layer  "]
+            direction LR
+            SVC_ANA["Process Analyzer\nLLM prompt + validation"]
+            SVC_PER["Analysis Persistence\nCentral orchestrator"]
+            SVC_SCO["Scoring Engine\nDeterministic priority"]
+            SVC_RES["Research Retrieval\nOpportunity → pgvector"]
+            SVC_EVI["Evidence Analyzer\nLLM evidence eval"]
+            SVC_GOV["Governance Analyzer\nLLM + risk scoring"]
+            SVC_LNK["Transformation Linker\nKeyword role + initiative"]
+            SVC_ENT["Enterprise Intelligence\nAggregation + ranking"]
+        end
+    end
+
+    subgraph AI["  AI / INTELLIGENCE LAYER  "]
+        direction LR
+        subgraph LLM_BOX["  Local LLM  —  Ollama · qwen2.5:7b  —  port 11434  "]
+            LLM_R1["Process decomposition\n3 activities · 2 opportunities"]
+            LLM_R2["Evidence interpretation\nclaim + relevance + confidence"]
+            LLM_R3["Governance reasoning\n7 risk dimensions"]
+        end
+        subgraph EMB_BOX["  Embedding Model  —  sentence-transformers · all-MiniLM-L6-v2  "]
+            EMB["384-dim vector generation\nindexing + query-time retrieval"]
+        end
+    end
+
+    subgraph DB["  DATA LAYER  —  PostgreSQL 16 + pgvector  "]
+        direction LR
+        DB_ENT["Enterprise Entities\nOrganisation · Strategy\nValue Chain · Process\nActivity · Role · Skill"]
+        DB_OPP["AI Intelligence\nAI Opportunities\nGovernance Assessments\nEvidence"]
+        DB_INIT["Transformation Graph\nTransformation Initiatives\nInitiative Dependencies\nProcess↔Role · Opp↔Initiative"]
+        DB_VEC["Vector Store\nResearch Sources\nResearch Chunks\n384-dim embeddings"]
+    end
+
+    subgraph INFRA["  INFRASTRUCTURE  —  Docker Compose  "]
+        DOCKER["postgres container\npgvector/pgvector:pg16  ·  port 5432"]
+    end
+
+    USER --> FRONTEND
+    FRONTEND -- "fetch()  REST  port 8000" --> BACKEND
+    BACKEND -- "httpx POST  format=json\n300s timeout" --> LLM_BOX
+    BACKEND -- "generate_embedding()\ncosine similarity" --> EMB_BOX
+    BACKEND -- "SQLAlchemy 2.x\npsycopg3" --> DB
+    DB --- DOCKER

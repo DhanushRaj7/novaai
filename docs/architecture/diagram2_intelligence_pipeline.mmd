@@ -1,0 +1,142 @@
+%%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#334155", "lineColor": "#64748b", "secondaryColor": "#0f172a", "tertiaryColor": "#0a0a0f", "background": "#0f172a", "mainBkg": "#111827", "nodeBorder": "#334155", "clusterBkg": "#0a0a0f", "titleColor": "#f1f5f9", "edgeLabelBackground": "#0f172a", "fontFamily": "Segoe UI, system-ui, sans-serif", "fontSize": "13px", "clusterBorder": "#1e293b"}}}%%
+flowchart TD
+
+    subgraph ENTRY["  Entry Points  "]
+        direction LR
+        USER_EX["👤 Executive\nselects existing process"]
+        USER_SR["👤 Analyst\nSurprise Record — new process"]
+    end
+
+    API_GATE["FastAPI\nPOST /processes/analyze-new\nPOST /processes/{id}/analyze"]
+
+    subgraph LLM1["  ① LLM — Process Decomposition  ·  Ollama · qwen2.5:7b  "]
+        direction TB
+        L1_IN["Input: name · description · business_purpose · current_challenges"]
+        L1_OUT["Output: process summary · 3 activities · 2 AI opportunities · raw factor scores"]
+        L1_VAL["Pydantic validation  →  ProcessAnalysis.model_validate()"]
+        L1_IN --> L1_OUT --> L1_VAL
+    end
+
+    ACTIVITIES["Activities\nname · description · sequence · activity_type · decision_required"]
+
+    AI_OPPS["AI Opportunities\nautomation_potential · human_involvement · expected_benefit\nfeasibility · strategic_alignment · risk_level · reasoning"]
+
+    subgraph SCORING["  ② Deterministic Priority Scoring  ·  FastAPI Backend  "]
+        SC_C["Priority Score  =  backend formula\n0.20×automation  +  0.10×(1−human)  +  0.25×benefit\n+  0.20×feasibility  +  0.20×strategic  +  0.05×(1−risk)"]
+    end
+
+    subgraph RAG["  ③ Research Retrieval  —  Pre-Indexed RAG  ·  pgvector  "]
+        direction LR
+        subgraph PREINDEX["  Pre-Indexing  (run separately — no live API endpoint)  "]
+            PI1["Research Source URL"] --> PI2["HTML extraction\nBeautifulSoup"] --> PI3["Chunking\n1200 chars · 200 overlap"] --> PI4["Sentence Transformers\nall-MiniLM-L6-v2\n384-dim embedding"] --> PI5["pgvector\nResearchChunk stored"]
+        end
+        subgraph RETRIEVAL["  Analysis-Time Retrieval  "]
+            RET1["Opportunity query string"] --> RET2["generate_embedding()\n384-dim vector"] --> RET3["pgvector cosine distance\nSELECT top-3 chunks"]
+        end
+    end
+
+    DISCONNECTED["⚠  DuckDuckGo live web search\nImplemented · currently disconnected\nfrom the active analysis runtime"]
+
+    subgraph LLM2["  ④ LLM — Evidence Analysis  ·  Ollama · qwen2.5:7b  ×3 per opportunity  "]
+        L2_OUT["Output: claim · supporting_excerpt · relevance_score · confidence_score"]
+        L2_VAL["Pydantic validation  →  EvidenceAnalysis.model_validate()"]
+        L2_OUT --> L2_VAL
+    end
+
+    EVIDENCE["Evidence\nclaim · excerpt · relevance_score · confidence_score"]
+
+    subgraph LLM3["  ⑤ LLM — Governance Assessment  ·  Ollama · qwen2.5:7b  ×1 per opportunity  "]
+        L3_OUT["Output: data_risk · privacy_risk · bias_risk · security_risk\ndecision_impact · regulatory_exposure · model_risk · reasoning"]
+        L3_VAL["Pydantic validation  →  GovernanceAnalysis.model_validate()"]
+        L3_OUT --> L3_VAL
+    end
+
+    subgraph GOV_SCORE["  ⑥ Deterministic Governance Risk  ·  FastAPI Backend  "]
+        GS_C["Overall Risk  =  backend formula\n0.15×data  +  0.15×privacy  +  0.10×bias  +  0.10×security\n+  0.20×decision_impact  +  0.20×regulatory  +  0.10×model"]
+    end
+
+    GOV_RESULT["Governance Assessment\noverall_risk · 7 risk dimensions · oversight · explainability"]
+
+    subgraph LINKING["  ⑦ Transformation Linking  ·  FastAPI Backend  —  keyword scoring, no LLM  "]
+        direction LR
+        LNK_ROLE["link_roles_to_process()\nToken overlap + keyword boost\nup to 3 roles per process"]
+        LNK_INIT["link_opportunities_to_initiatives()\nDomain rule scoring\nup to 2 initiatives per opportunity"]
+    end
+
+    ROLES["Roles + Skills\nProcess ↔ Role ↔ Skill"]
+
+    INITS["Transformation Initiatives\nrelationship_type: supports\ngovernance_prerequisite · data_prerequisite"]
+
+    DEPS["Initiative Dependencies\ninitiative → depends_on → initiative\nrecursive chain · cycle protection"]
+
+    subgraph PERSIST["  ⑧ Persist to PostgreSQL  ·  Coordinated by analysis_persistence.py  "]
+        PG["PostgreSQL 16 + pgvector\nNote: evidence sub-steps may commit internally"]
+    end
+
+    subgraph DATAGRAPH["  Database Knowledge Graph  "]
+        direction LR
+        DG_ORG["Organisation"] --> DG_STR["Strategy"]
+        DG_ORG --> DG_VC["Value Chain Stage"]
+        DG_VC --> DG_P["Process"]
+        DG_P --> DG_A["Activity"]
+        DG_A --> DG_O["AI Opportunity"]
+        DG_P --> DG_RL["Role → Skill"]
+        DG_O --> DG_EV["Evidence\n→ Research Source"]
+        DG_O --> DG_GV["Governance\nAssessment"]
+        DG_O --> DG_TI["Transformation\nInitiative"]
+        DG_TI --> DG_DEP["↺ Initiative\nDependency"]
+    end
+
+    ENT_INT["Enterprise Intelligence\nRanked processes · ranked opportunities · role-skill graph\ninitiative chains · transformation priorities · intelligence gaps"]
+
+    DASHBOARD["📊  Executive Dashboard\nEnterprise view · Process drill-down · Opportunity drawer\nGovernance · Dependencies · Surprise Record result"]
+
+    subgraph LEGEND["  Responsibility Separation  "]
+        direction LR
+        LEG_LLM["🟦  LLM  —  Ollama · qwen2.5:7b\nProcess decomposition · Evidence interpretation\nGovernance reasoning · Raw factor estimation"]
+        LEG_BE["🟩  Backend  —  FastAPI\nPydantic validation · Pipeline orchestration\nDeterministic scoring · Relationship management\nPersistence coordination"]
+        LEG_DB["🟫  Database  —  PostgreSQL + pgvector\nSource of truth · Knowledge graph\nResearch embeddings · Historical intelligence"]
+    end
+
+    ENTRY --> API_GATE
+    API_GATE --> LLM1
+    LLM1 --> ACTIVITIES
+    LLM1 --> AI_OPPS
+    AI_OPPS --> SCORING
+    SCORING --> RAG
+    RAG --> LLM2
+    LLM2 --> EVIDENCE
+    AI_OPPS --> LLM3
+    LLM3 --> GOV_SCORE
+    GOV_SCORE --> GOV_RESULT
+    EVIDENCE --> LINKING
+    GOV_RESULT --> LINKING
+    SCORING --> LINKING
+    LINKING --> ROLES
+    LINKING --> INITS
+    INITS --> DEPS
+    ROLES --> PERSIST
+    INITS --> PERSIST
+    DEPS --> PERSIST
+    EVIDENCE --> PERSIST
+    GOV_RESULT --> PERSIST
+    AI_OPPS --> PERSIST
+    ACTIVITIES --> PERSIST
+    PERSIST --> DATAGRAPH
+    DATAGRAPH --> ENT_INT
+    ENT_INT --> DASHBOARD
+
+    DISCONNECTED -. "not connected to active pipeline" .-> RAG
+
+    style LLM1 fill:#1e3a5f,color:#bfdbfe,stroke:#2563eb
+    style LLM2 fill:#1e3a5f,color:#bfdbfe,stroke:#2563eb
+    style LLM3 fill:#1e3a5f,color:#bfdbfe,stroke:#2563eb
+    style SCORING fill:#14532d,color:#bbf7d0,stroke:#16a34a
+    style GOV_SCORE fill:#14532d,color:#bbf7d0,stroke:#16a34a
+    style LINKING fill:#14532d,color:#bbf7d0,stroke:#16a34a
+    style PERSIST fill:#3b1f00,color:#fed7aa,stroke:#92400e
+    style DATAGRAPH fill:#3b1f00,color:#fed7aa,stroke:#92400e
+    style DISCONNECTED fill:#3b0000,color:#fca5a5,stroke:#991b1b
+    style LEG_LLM fill:#1e3a5f,color:#bfdbfe,stroke:#2563eb
+    style LEG_BE fill:#14532d,color:#bbf7d0,stroke:#16a34a
+    style LEG_DB fill:#3b1f00,color:#fed7aa,stroke:#92400e

@@ -76,10 +76,8 @@ type Evidence = {
   id: number;
   claim: string;
   excerpt: string;
-  relevance?: number;
-  confidence?: number;
-  relevance_score?: number;
-  confidence_score?: number;
+  relevance: number;
+  confidence: number;
   source_id: number;
 };
 
@@ -125,6 +123,65 @@ function App() {
 
   const [selectedOpportunity, setSelectedOpportunity] =
     useState<Opportunity | null>(null);
+
+  const [selectedProcess, setSelectedProcess] =
+    useState<Intelligence | null>(null);
+  const [loadingSelectedProcess, setLoadingSelectedProcess] =
+    useState(false);
+  const [selectedProcessError, setSelectedProcessError] =
+    useState("");
+
+  const handleSelectProcess = async (processId: number) => {
+    try {
+      setLoadingSelectedProcess(true);
+      setSelectedProcessError("");
+      setSelectedOpportunity(null);
+
+      const processData = await getProcessIntelligence(processId);
+
+      const normalizedData: Intelligence = {
+        ...processData,
+        roles: (processData.roles ?? []).map((role: Role) => ({
+          ...role,
+          skills: role.skills ?? [],
+        })),
+        activities: (processData.activities ?? []).map((activity: Activity) => ({
+          ...activity,
+          ai_opportunities: activity.ai_opportunities ?? [],
+        })),
+        ai_opportunities: (processData.ai_opportunities ?? []).map((opportunity: any) => ({
+          ...opportunity,
+          evidence: (opportunity.evidence ?? []).map((item: any) => ({
+            ...item,
+            relevance: item.relevance ?? item.relevance_score ?? 0,
+            confidence: item.confidence ?? item.confidence_score ?? 0,
+          })),
+          initiatives: (opportunity.initiatives ?? []).map((initiative: any) => ({
+            ...initiative,
+            relationship:
+              initiative.relationship ??
+              initiative.relationship_type ??
+              "Supports",
+            dependencies: initiative.dependencies ?? [],
+          })),
+          dependencies: opportunity.dependencies ?? [],
+        })),
+        initiatives: processData.initiatives ?? [],
+        dependencies: processData.dependencies ?? [],
+      };
+
+      setSelectedProcess(normalizedData);
+    } catch (err) {
+      console.error(err);
+      setSelectedProcessError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load process intelligence."
+      );
+    } finally {
+      setLoadingSelectedProcess(false);
+    }
+  };
 
   const [newProcessName, setNewProcessName] = useState("");
   const [newProcessDescription, setNewProcessDescription] = useState("");
@@ -308,14 +365,14 @@ function App() {
         activity.ai_opportunities ?? []
     );
 
-  const initiatives = Array.from(
-    new Map(
+  const initiatives: Initiative[] = Array.from(
+    new Map<number, Initiative>(
       ai_opportunities
         .flatMap(
           (opportunity) =>
             opportunity.initiatives ?? []
         )
-        .map((initiative) => [
+        .map((initiative): [number, Initiative] => [
           initiative.id,
           initiative,
         ])
@@ -692,6 +749,317 @@ const rankedEnterpriseOpportunities =
 
 
 
+        {/* Executive Transformation View */}
+        {enterprise && (
+          <section className="mb-8 space-y-6">
+            <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-white/5">
+                <div className="text-xs uppercase tracking-[0.2em] text-gray-600 mb-2">
+                  Executive Intelligence
+                </div>
+                <h3 className="font-semibold text-white">
+                  Enterprise Transformation View
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Cross-entity intelligence connecting processes, opportunities, initiatives, roles, skills, and dependencies.
+                </p>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {/* Transformation priorities */}
+                  <div>
+                    <SectionTitle title="Transformation priorities" />
+                    <div className="space-y-3">
+                      {(enterprise.ranked_processes ?? []).map(
+                        (item: any, index: number) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSelectProcess(item.id)}
+                            className="w-full text-left rounded-xl border border-white/5 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/10 transition p-4 cursor-pointer"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="w-8 h-8 shrink-0 rounded-lg bg-white/5 flex items-center justify-center text-xs text-gray-500">
+                                {index + 1}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-200">
+                                      {item.name}
+                                    </div>
+                                    <div className="text-xs text-gray-600 mt-1 line-clamp-2">
+                                      {item.description}
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                                      Priority
+                                    </div>
+                                    <div className="text-xl font-semibold text-white mt-1">
+                                      {Math.round((item.priority_score ?? 0) * 100)}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-3 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-white/40 rounded-full"
+                                    style={{ width: `${(item.priority_score ?? 0) * 100}%` }}
+                                  />
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                  {(item.ai_opportunities ?? []).map((opportunity: any) => (
+                                    <span
+                                      key={opportunity.id}
+                                      className="px-2 py-1 rounded-md bg-purple-500/5 border border-purple-500/10 text-[10px] text-purple-400"
+                                    >
+                                      {opportunity.name} · {Math.round((opportunity.priority_score ?? 0) * 100)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Opportunity landscape */}
+                  <div>
+                    <SectionTitle title="AI opportunity landscape" />
+                    <div className="space-y-3">
+                      {(enterprise.ranked_ai_opportunities ?? []).map(
+                        (opportunity: any, index: number) => (
+                          <div
+                            key={opportunity.id}
+                            className="rounded-xl border border-white/5 bg-white/[0.015] p-4"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="text-xs text-gray-600 w-5">
+                                {index + 1}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-gray-200 truncate">
+                                  {opportunity.name}
+                                </div>
+                                <div className="flex flex-wrap gap-4 mt-2 text-[11px]">
+                                  <span className="text-gray-600">
+                                    Benefit <span className="text-gray-400">{Math.round((opportunity.expected_benefit ?? 0) * 100)}%</span>
+                                  </span>
+                                  <span className="text-gray-600">
+                                    Feasibility <span className="text-gray-400">{Math.round((opportunity.feasibility ?? 0) * 100)}%</span>
+                                  </span>
+                                  <span className="text-gray-600">
+                                    Risk <span className="text-gray-400">{Math.round((opportunity.risk_level ?? 0) * 100)}%</span>
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                                  Priority
+                                </div>
+                                <div className="text-lg font-semibold text-white mt-1">
+                                  {Math.round((opportunity.priority_score ?? 0) * 100)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Initiative dependency graph */}
+            <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-white/5">
+                <SectionTitle title="Transformation dependencies" />
+                <p className="text-xs text-gray-500 -mt-2">
+                  Dependency chains show which transformation foundations must exist before downstream initiatives can proceed.
+                </p>
+              </div>
+              <div className="p-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+                {(enterprise.ranked_initiatives ?? []).map((initiative: any) => (
+                  <div
+                    key={initiative.id}
+                    className="rounded-xl border border-white/5 bg-white/[0.015] p-5"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-200">
+                          {initiative.name}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {initiative.status}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                          Priority
+                        </div>
+                        <div className="text-lg font-semibold text-white mt-1">
+                          {Math.round((initiative.priority ?? 0) * 100)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      {initiative.dependencies?.length ? (
+                        <DependencyList dependencies={initiative.dependencies} />
+                      ) : (
+                        <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs text-gray-600">
+                          No upstream dependency.
+                        </div>
+                      )}
+                    </div>
+
+                    {initiative.ai_opportunities?.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-white/5">
+                        <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">
+                          Connected opportunities
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {initiative.ai_opportunities.map((opportunity: any) => (
+                            <span
+                              key={opportunity.id}
+                              className="px-2 py-1 rounded-md bg-white/5 text-[10px] text-gray-500"
+                            >
+                              {opportunity.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Role / skill impact */}
+            <div className="border border-white/5 bg-[#0d0d10] rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-white/5">
+                <SectionTitle title="Role and skill impact" />
+                <p className="text-xs text-gray-500 -mt-2">
+                  Enterprise role-to-skill relationships surfaced from the transformation intelligence graph.
+                </p>
+              </div>
+              <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">
+                    Roles → skills
+                  </div>
+                  <div className="space-y-3">
+                    {(enterprise.roles ?? []).map((role: any) => (
+                      <div
+                        key={role.id}
+                        className="rounded-xl border border-white/5 bg-white/[0.015] p-4"
+                      >
+                        <div className="text-sm text-gray-200">
+                          {role.name}
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {(role.skills ?? []).map((skill: any) => (
+                            <span
+                              key={skill.id}
+                              className="px-2 py-1 rounded-md bg-white/5 text-[10px] text-gray-500"
+                            >
+                              {skill.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">
+                    Skills → roles
+                  </div>
+                  <div className="space-y-3">
+                    {(enterprise.skills ?? []).map((skill: any) => (
+                      <div
+                        key={skill.id}
+                        className="rounded-xl border border-white/5 bg-white/[0.015] p-4"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="text-sm text-gray-200">
+                            {skill.name}
+                          </div>
+                          <div className="text-[10px] text-gray-600">
+                            {(skill.roles ?? []).length} roles
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {(skill.roles ?? []).map((role: any) => (
+                            <span
+                              key={role.id}
+                              className="px-2 py-1 rounded-md bg-white/5 text-[10px] text-gray-500"
+                            >
+                              {role.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Intelligence gaps */}
+            {(() => {
+              const unmapped = (enterprise.ai_opportunities ?? []).filter(
+                (opportunity: any) =>
+                  !opportunity.initiatives || opportunity.initiatives.length === 0
+              );
+
+              return (
+                <div className="border border-amber-500/10 bg-amber-500/[0.02] rounded-2xl overflow-hidden">
+                  <div className="px-6 py-5 border-b border-amber-500/10">
+                    <div className="text-xs uppercase tracking-[0.2em] text-amber-400/60 mb-2">
+                      Intelligence Gap
+                    </div>
+                    <h3 className="font-semibold text-white">
+                      AI opportunities without a transformation initiative
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      These opportunities were identified by the analysis pipeline but are not yet connected to a transformation initiative.
+                    </p>
+                  </div>
+                  <div className="p-6">
+                    {unmapped.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                        {unmapped.map((opportunity: any) => (
+                          <div
+                            key={opportunity.id}
+                            className="rounded-xl border border-white/5 bg-white/[0.015] p-4"
+                          >
+                            <div className="text-sm text-gray-300">
+                              {opportunity.name}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-2">
+                              Priority {Math.round((opportunity.priority_score ?? 0) * 100)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-600">
+                        All current AI opportunities are connected to an initiative.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+        )}
+
         {/* Process Header */}
         <section className="mb-8">
 
@@ -1049,6 +1417,43 @@ const rankedEnterpriseOpportunities =
 
       </main>
 
+      {loadingSelectedProcess && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="rounded-xl border border-white/10 bg-[#0d0d10] px-6 py-5 shadow-2xl">
+            <div className="text-sm font-medium text-gray-200">Loading process intelligence...</div>
+            <div className="text-xs text-gray-600 mt-2">Retrieving activities, roles, opportunities, governance, and evidence.</div>
+          </div>
+        </div>
+      )}
+
+      {selectedProcessError && !loadingSelectedProcess && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="rounded-xl border border-red-500/20 bg-[#0d0d10] px-6 py-5 shadow-2xl max-w-md">
+            <div className="text-sm font-medium text-red-400">Unable to load process intelligence</div>
+            <div className="text-xs text-gray-500 mt-2">{selectedProcessError}</div>
+            <button
+              type="button"
+              onClick={() => setSelectedProcessError("")}
+              className="mt-4 rounded-lg bg-white px-4 py-2 text-xs font-medium text-black"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Process Intelligence Drawer */}
+      {selectedProcess && (
+        <ProcessDrawer
+          intelligence={selectedProcess}
+          onClose={() => setSelectedProcess(null)}
+          onOpportunityClick={(opportunity) => {
+            setSelectedProcess(null);
+            setSelectedOpportunity(opportunity);
+          }}
+        />
+      )}
+
       {/* Opportunity Drawer */}
       {selectedOpportunity && (
         <OpportunityDrawer
@@ -1178,16 +1583,6 @@ function OpportunityCard({
   );
 }
 
-function formatPercentage(value: unknown): string {
-  const numeric = Number(value);
-
-  if (!Number.isFinite(numeric)) {
-    return "N/A";
-  }
-
-  return `${Math.round(numeric * 100)}%`;
-}
-
 /* =========================================================
    SCORE
 ========================================================= */
@@ -1222,6 +1617,253 @@ function Score({
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   PROCESS INTELLIGENCE DRAWER
+========================================================= */
+
+function ProcessDrawer({
+  intelligence,
+  onClose,
+  onOpportunityClick,
+}: {
+  intelligence: Intelligence;
+  onClose: () => void;
+  onOpportunityClick: (opportunity: Opportunity) => void;
+}) {
+  const activities = intelligence.activities ?? [];
+
+  // The process intelligence API exposes AI opportunities through
+  // their activities. Derive the process-level opportunity list from
+  // those activity relationships so the executive drill-down stays
+  // consistent with the main dashboard.
+  const opportunities = Array.from(
+    new Map(
+      activities
+        .flatMap((activity) => activity.ai_opportunities ?? [])
+        .map((opportunity) => [opportunity.id, opportunity])
+    ).values()
+  );
+
+  const roles = intelligence.roles ?? [];
+  const initiatives = intelligence.initiatives ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default"
+        aria-label="Close process intelligence"
+      />
+
+      <aside className="absolute top-0 right-0 h-full w-full max-w-3xl bg-[#0d0d10] border-l border-white/10 shadow-2xl overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-[#0d0d10]/95 backdrop-blur border-b border-white/5 px-7 py-5">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-gray-600">
+                Process Intelligence
+              </div>
+              <h2 className="text-xl font-semibold text-white mt-2">
+                {intelligence.process.name}
+              </h2>
+              <p className="text-xs text-gray-500 mt-2 max-w-2xl leading-relaxed">
+                {intelligence.process.description}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 shrink-0 rounded-lg border border-white/5 bg-white/[0.02] text-gray-500 hover:text-white hover:bg-white/5 transition"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+            <DetailMetric
+              label="Priority"
+              value={`${Math.round((intelligence.process.priority_score ?? 0) * 100)}/100`}
+            />
+            <DetailMetric label="Activities" value={activities.length} />
+            <DetailMetric label="AI opportunities" value={opportunities.length} />
+            <DetailMetric label="Affected roles" value={roles.length} />
+          </div>
+        </div>
+
+        <div className="p-7 space-y-8">
+          <section>
+            <SectionTitle title="AI opportunities" />
+            {opportunities.length > 0 ? (
+              <div className="space-y-3">
+                {opportunities
+                  .slice()
+                  .sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0))
+                  .map((opportunity) => (
+                    <button
+                      type="button"
+                      key={opportunity.id}
+                      onClick={() => onOpportunityClick(opportunity)}
+                      className="w-full text-left rounded-xl border border-white/5 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/10 transition p-5"
+                    >
+                      <div className="flex items-start justify-between gap-5">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-200">
+                            {opportunity.name}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-2 leading-relaxed">
+                            {opportunity.description}
+                          </div>
+                          <div className="flex flex-wrap gap-4 mt-3 text-[11px]">
+                            <span className="text-gray-600">
+                              Benefit <span className="text-gray-400">{Math.round((opportunity.expected_benefit ?? 0) * 100)}%</span>
+                            </span>
+                            <span className="text-gray-600">
+                              Feasibility <span className="text-gray-400">{Math.round((opportunity.feasibility ?? 0) * 100)}%</span>
+                            </span>
+                            <span className="text-gray-600">
+                              Risk <span className="text-gray-400">{Math.round((opportunity.risk_level ?? 0) * 100)}%</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[10px] uppercase tracking-widest text-gray-600">
+                            Priority
+                          </div>
+                          <div className="text-2xl font-semibold text-white mt-1">
+                            {Math.round((opportunity.priority_score ?? 0) * 100)}
+                          </div>
+                          <div className="text-[10px] text-gray-600 mt-1">
+                            View intelligence →
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/5 bg-white/[0.015] p-5 text-sm text-gray-600">
+                No AI opportunities identified.
+              </div>
+            )}
+          </section>
+
+          <section>
+            <SectionTitle title="Process activities" />
+            <div className="rounded-xl border border-white/5 bg-white/[0.015] overflow-hidden">
+              <div className="divide-y divide-white/5">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="px-5 py-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-8 h-8 shrink-0 rounded-lg bg-white/5 flex items-center justify-center text-xs text-gray-500">
+                        {activity.sequence}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="text-sm font-medium text-gray-200">
+                              {activity.name}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {activity.activity_type}
+                            </div>
+                          </div>
+                          {activity.decision_required && (
+                            <span className="shrink-0 px-2 py-1 rounded-md bg-amber-500/5 border border-amber-500/10 text-[10px] text-amber-400">
+                              Decision
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2 leading-relaxed">
+                          {activity.description}
+                        </div>
+                        {activity.ai_opportunities?.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {activity.ai_opportunities.map((opportunity) => (
+                              <button
+                                type="button"
+                                key={opportunity.id}
+                                onClick={() => onOpportunityClick(opportunity)}
+                                className="px-2 py-1 rounded-md bg-purple-500/5 border border-purple-500/10 text-[10px] text-purple-400 hover:bg-purple-500/10 transition"
+                              >
+                                {opportunity.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle title="Affected roles and skills" />
+            {roles.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {roles.map((role) => (
+                  <div key={role.id} className="rounded-xl border border-white/5 bg-white/[0.015] p-4">
+                    <div className="text-sm font-medium text-gray-200">{role.name}</div>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {(role.skills ?? []).map((skill) => (
+                        <span key={skill.id} className="px-2 py-1 rounded-md bg-white/5 text-[10px] text-gray-500">
+                          {skill.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/5 bg-white/[0.015] p-5 text-sm text-gray-600">
+                No affected roles identified.
+              </div>
+            )}
+          </section>
+
+          <section>
+            <SectionTitle title="Transformation initiatives" />
+            {initiatives.length > 0 ? (
+              <div className="space-y-3">
+                {initiatives.map((initiative) => (
+                  <div key={initiative.id} className="rounded-xl border border-white/5 bg-white/[0.015] p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-200">{initiative.name}</div>
+                        {initiative.description && (
+                          <div className="text-xs text-gray-500 mt-2 leading-relaxed">{initiative.description}</div>
+                        )}
+                      </div>
+                      <span className="shrink-0 px-2 py-1 rounded-md bg-blue-500/5 border border-blue-500/10 text-[10px] text-blue-400">
+                        {initiative.status}
+                      </span>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-[11px] mb-2">
+                        <span className="text-gray-600">Priority</span>
+                        <span className="text-gray-400">{Math.round((initiative.priority ?? 0) * 100)}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-white/40 rounded-full" style={{ width: `${(initiative.priority ?? 0) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/5 bg-white/[0.015] p-5 text-sm text-gray-600">
+                No transformation initiatives linked.
+              </div>
+            )}
+          </section>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -1445,20 +2087,14 @@ function OpportunityDrawer({
                       <span className="text-gray-600">
                         Relevance:{" "}
                         <span className="text-gray-400">
-                          {formatPercentage(
-                            evidence.relevance ??
-                              (evidence as any).relevance_score
-                          )}
+                          {Math.round(evidence.relevance * 100)}%
                         </span>
                       </span>
 
                       <span className="text-gray-600">
                         Confidence:{" "}
                         <span className="text-gray-400">
-                          {formatPercentage(
-                            evidence.confidence ??
-                              (evidence as any).confidence_score
-                          )}
+                          {Math.round(evidence.confidence * 100)}%
                         </span>
                       </span>
 
